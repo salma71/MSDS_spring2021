@@ -17,12 +17,17 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+options("rsconnect.http" = 'curl')
 ```
 
 ## Problem_2.1
 1. Use the help function to explore what the series `gold` , `woolyrnq` and `gas` represent.
   a. Use `autoplot()` to plot each of these in separate plots.
   
+```{r}
+library(httr)    
+set_config(use_proxy(url="10.3.100.207",port=8080))
+```
 
 ```{r message=FALSE, warning=FALSE}
 library(ggplot2)

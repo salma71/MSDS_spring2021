@@ -1,0 +1,173 @@
+---
+title: "Homework 2 Predictive analytics"
+author: "Salma Elshahawy"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  echo = FALSE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 3
+)
+library(fpp2)
+library(forecast)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(gridExtra)
+theme_set(theme_classic())
+
+```
+
+# Chapter 3 - The forcaster's toolbox
+## Problem 3.1
+
+For the following series, find an appropriate Box-Cox transformation in order to stabilize the variance.
+
+`usnetelec`
+`usgdp`
+`mcopper`
+`enplanements`
+
+## Solution 
+```{r}
+box_usnetelec <- BoxCox.lambda(usnetelec)
+autoplot(BoxCox(usnetelec, box_usnetelec))
+```
+-------
+Let's convert it into a function to be DRY
+
+
+```{r}
+boxcox_plot <- function(df, name){
+  
+  box_df <- BoxCox.lambda(df)
+  print(str_interp('The lambda for the ${name} is $[.4f]{box_df}'))
+  # print(paste0('The lambda for {this time} series is: ', box_df))
+
+  plot1 <- autoplot(df) +
+    ggtitle(deparse(substitute(df)))
+  
+  plot2 <- autoplot(BoxCox(df, box_df)) +
+    ggtitle(paste(deparse(substitute(df)),' - After Transformation'))
+  
+  gridExtra::grid.arrange(plot1, plot2, ncol=2)
+  
+}
+```
+
+```{r}
+boxcox_plot(usnetelec, 'usnetelec')
+boxcox_plot(usgdp, 'usgdp')
+boxcox_plot(mcopper, 'mcopper')
+boxcox_plot(enplanements, 'enplanements')
+
+```
+-----------
+## Problem 3.2
+
+**Why is a Box-Cox transformation unhelpful for the `cangas` data?**
+
+## Solution
+
+```{r}
+boxcox_plot(cangas, 'cangas')
+```
+
+As illustrated from the plots, even with a lambda of 0.5, the transformation failed to make the explanations easier. Lambda failed to make the size of the seasonal variation the same across the whole series. This might be due to high seasonal instability between the 1965 and 1990. 
+
+-----------
+
+## Problem 3.3
+
+**What Box-Cox transformation would you select for your retail data (from Exercise 3 in Section 2.10)?**
+
+
+## Solution 
+
+```{r}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1)
+myts <- ts(retaildata[,"A3349873A"], frequency=12, start=c(1982,4))
+boxcox_plot(myts, 'Retail data')
+```
+
+I would pick the `Box-cox` transformation with a lambda of 0.12. As illustrated from the plot, lambda succeeded to stabalize and smooth the variance of the retail time series. 
+
+------- 
+
+## Problem 3.8
+
+For your retail time series (from Exercise 3 in Section 2.10):
+  a. Split the data into two parts using
+  
+```{r}
+myts.train <- window(myts, end=c(2010,12))
+myts.test <- window(myts, start=2011)
+```
+
+  b. Check that your data have been split appropriately by producing the following plot.
+  
+```{r}
+autoplot(myts) +
+  autolayer(myts.train, series="Training") +
+  autolayer(myts.test, series="Test")
+```
+
+  c. Calculate forecasts using `snaive` applied to `myts.train`.
+  
+```{r}
+(fc <- snaive(myts.train))
+```
+
+  d. Compare the accuracy of your forecasts against the actual values stored in `myts.test`
+  
+```{r}
+accuracy(fc,myts.test)
+```
+
+  e. Check the residuals.
+
+```{r}
+checkresiduals(fc)
+```
+**Do the residuals appear to be uncorrelated and normally distributed?**
+
+Yes. However, it seems that the residuals are not centered around zero(potential bias). Additionally, the ACF plot shows several lags exceeding the 95% confidence interval, and the Ljung-Box test has a statistically significant p-value suggesting the residuals are not purely white noise. This suggests that there may be another model or additional variables that will better capture the remaining signal in the data.
+
+
+**How sensitive are the accuracy measures to the training/test split?**
+
+```{r}
+# create training data
+train2 <- window(myts, end=c(2010,12))
+
+# create specific test data of interest
+test <- window(myts, start=2011)
+
+# Compute snaive forecasts and save to snaive_fc
+snaive_fc <- snaive(train2, h = length(test))
+
+# Compute mean forecasts and save to mean_fc
+mean_fc <- meanf(train2, h = length(test))
+
+# Use accuracy() to compute forecast accuracy
+accuracy(snaive_fc, test)
+print('-----------')
+print('Accuraccy using mean_fc')
+accuracy(mean_fc, test)
+```
+
+
+We see the `snaive` model produces lower scores across the majrity of measures indicating better forecasting accuracy.
+
+-------
+
+^[GithHub repo] [Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
