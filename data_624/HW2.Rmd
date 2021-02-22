@@ -166,7 +166,7 @@ accuracy(mean_fc, test)
 ```
 
 
-We see the `snaive` model produces lower scores across the majrity of measures indicating better forecasting accuracy.
+We see the `snaive` model produces lower scores across the majority of measures indicating better forecasting accuracy.
 
 -------
 
