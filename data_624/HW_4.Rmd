@@ -1,0 +1,199 @@
+---
+title: "Homework 4 Predictive analytics"
+author: "Salma Elshahawy"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Homework 4 Predictive analytics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+[Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  echo = FALSE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 3
+)
+library(fpp2)
+library(forecast)
+library(readr)
+library(mlbench)
+library(stringr)
+library(tidyverse)
+library(corrplot)
+library(ggplot2)
+library(kableExtra)
+library(seasonal)
+library(gridExtra)
+theme_set(theme_classic())
+```
+
+## Problem_3.1
+
+The UC Irvine Machine Learning Repository contains a data set related to glass identification. The data consists of 214 glass samples labeled as one of several class categories. There are nine predictors, including the refractive index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe. The data can be accessed via:
+
+```{r}
+data("Glass")
+str(Glass)
+```
+
+**a. Using visualizations, explore the predictor variables to understand their distributions as well as the relationships between predictors**
+
+I will start by conducting a uni-variate analysis for each predictor to study the distribution. 
+
+```{r fig.height=10, fig.width=6}
+long_glass <- Glass %>%
+  pivot_longer(-Type, names_to = "Predictor", values_to = "Value", values_drop_na = TRUE) %>%
+  mutate(Predictor = as.factor(Predictor))
+
+long_glass %>%
+  ggplot(aes(Value, color = Predictor, fill = Predictor)) +
+  geom_histogram(bins = 50) +
+  facet_wrap(~ Predictor, ncol = 3, scales = "free") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_color_brewer(palette = "Set1") +
+  theme_light() +
+  theme(legend.position = "none") +
+  ggtitle("Distribution of Predictor Variables")
+```
+
+`RI`, `Si`, `Na`, `AI`, and `Ca` have Gausian normal distribution. However, the rest of the variables are either severly skewed with long tail to the right, or has a bi modal distribution such as the `Mg`.
+We can consider to normalize/standardize the data or make a transformation to make the predictors have more reliability in building the model. 
+
+The next type of visualization would be the multi-variate visualization, which reveals the reationship between each predictor and the target variable. We will use the correlation heatmap plot utilizing pearson correlation metho. 
+
+```{r fig.height=6, fig.width=6}
+#ColorBrewer's 5 class spectral color palette
+col <- colorRampPalette(c("#d7191c", "#fdae61", "#ffffbf", "#abdda4", "#2b83ba"))
+
+Glass %>%
+  select(-Type) %>%
+  cor() %>%
+  round(., 2) %>%
+  corrplot(., method="color", col=col(200), type="upper", order="hclust", addCoef.col = "black", tl.col="black", tl.srt=45, diag=FALSE )
+
+```
+
+Most of the predictors are negatively correlated with each other.
+
+**b. Do there appear to be any outliers in the data? Are any predictors skewed?**
+
+**For skewness:** Looking back to the uni-variate (histograms), we can see that the majority of the variables are skewed with a long tail to the right. 
+**For outliers:** This can be determined from the boxplot 
+
+```{r fig.height=5, message=FALSE, warning=FALSE}
+long_glass %>%
+  ggplot(aes(x = Type, y = Value, color = Predictor)) +
+  geom_boxplot() +
+  ylim(0, 20) + 
+  scale_color_brewer(palette = "Set1") +
+  theme_light()
+```
+
+Yes there are outliers in most of the predictors. As shown from the scatter plot, the outliers are creating a cluster within value (15-20) for `Na` and `Ca`
+
+**c. Are there any relevant transformations of one or more predictors that might improve the classification model?**
+
+yes, I would consider a transformation, Boxcox transformation or log-transformation. 
+
+---
+
+## Problem_3.2
+
+The soybean data can also be found at the UC Irvine Machine Learning Repository. Data were collected to predict disease in 683 soybeans. The 35 predictors are mostly categorical and include information on the environemental conditions (e.g. temperature, precipitation) and plant conditions (e.g., left spots, mold growth). The outcome labels consist of 19 distinct classes. The data can be loaded via:
+
+```{r}
+data(Soybean)
+str(Soybean)
+```
+
+**a. Investigate the frequency distributions for the categorical predictors. Are any of the distributions degenerate in the ways discussed earlier in this chapter?**
+
+```{r}
+sb_freq <- Soybean
+head(Soybean[,2:length(sb_freq)])
+```
+
+**Roughly 18 % of the data are missing. Are there particular predictors that are more likely to be missing? Is the pattern of missing data related to the classes?**
+
+I will start with counting the missing values in the Soybean.
+
+```{r}
+nas <- Soybean[-1] %>% apply(2, is.na) %>% apply(2, sum, na.rm=T)
+nas <- sort(nas, decreasing=T)
+nas
+```
+
+```{r}
+t_list <- list()
+i <- 0
+for (var in names(Soybean[-1])) {
+  i <- i +1
+  row_id <- which(is.na(Soybean[,var]))
+  temp <- Soybean[row_id,'Class']
+  t_list[[i]] <- as.matrix(table(temp))
+}
+df <- data.frame(do.call(cbind, t_list))
+names(df) <- names(Soybean[-1])
+df <- df[names(nas)]
+df <- t(df)
+kable(df) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width='100%', height = "500px")
+```
+
+The numbers are the count of missing values for the predictors.
+
+From this table, it seems that some predictors have same rows with missing values, and the same distribution of classes. Furthere, these predictors’ missing values are biased toward the class phytophthorarot. For example, for the predictor hail, out of the 121 missing values, 68 (56%) of them are phytophthorarot. This indicates “informative missingness”, which can induce significant bias in the model.
+
+
+**c. Develop a strategy for handling missing data, either by eliminating predictors or imputation.**
+
+```{r}
+# Mark the rows that has missing values and has the class being "phytophthora-rot"
+eliminate <- (!complete.cases(Soybean)) & ifelse(Soybean$Class=='phytophthora-rot', 1, 0)
+
+# Eliminate those rows
+Soybean.a <- Soybean[!eliminate,]
+
+paste('Eliminated', sum(eliminate), 'rows.')
+```
+
+
+```{r}
+paste(dim(Soybean.a)[1], 'rows remaining.')
+```
+
+
+```{r}
+paste(sum(!complete.cases(Soybean.a)), 'rows still contain missing values.')
+```
+
+```{r}
+fill_na <- function(df){
+  
+  for (i in 2:dim(df)[2]){
+    paste('Filling', sum(is.na(df[,i])), 'missing values for feature: ', names(df)[i], '.') %>% print()
+    find.mode <- df[,i] %>% table() %>% sort(decreasing = T) %>% prop.table() %>% round(4)
+    mode.name <- find.mode %>%  names() %>% .[1]
+    paste('The most frequent factor of this feature is:', mode.name, ', which is', find.mode[mode.name]*100, '% of the class.') %>% print()
+    df[is.na(df[,i]), i] <- mode.name
+    paste('------------------------------------------------') %>% print()
+  }
+  return(df)
+}
+
+Soybean.b <- fill_na(Soybean.a)
+```
+
+```{r}
+paste('There are now', dim(Soybean.b)[1], 'rows.', sum(!complete.cases(Soybean.b)), 'rows have missing values.')
+
+```
+
+
+[Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)

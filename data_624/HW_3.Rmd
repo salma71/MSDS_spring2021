@@ -1,0 +1,136 @@
+---
+title: "Homework 3 Predictive analytics"
+author: "Salma Elshahawy"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Homework 3 Predictive analytics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+[Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  echo = FALSE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 3
+)
+library(fpp2)
+library(forecast)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(seasonal)
+library(gridExtra)
+theme_set(theme_classic())
+```
+
+## Problem 6.2
+The `plastics` data set consists of the monthly sales (in thousands) of product A for a plastics manufacturer for five years.
+
+  **a. Plot the time series of sales of product A. Can you identify seasonal fluctuations and/or a trend-cycle?**
+
+```{r, fig.show='hold'}
+autoplot(plastics)
+ggseasonplot(plastics) + 
+  labs(title = 'Monthly sales of Product "A"', x = 'Month', y = 'Sales')
+ggsubseriesplot(plastics) +
+  labs(title='Subseries Plot', x="Month", y="Sales")
+```
+
+The plots show that the data has a seasonal trend. Also, it seams that the seasonal trend is positively increasing with time from Feb. to reach its peak from Jun to Oct. 
+
+
+  **b. Use a classical multiplicative decomposition to calculate the trend-cycle and seasonal indices.**
+
+```{r fig.height=4, fig.width=7}
+plastics %>%
+  decompose(type = 'multiplicative') %>%
+  autoplot()
+
+```
+
+  **c. Do the results support the graphical interpretation from part a?**   
+
+Yes, the plots confirms that the data is highly seasonal increasing trends. 
+
+  **d. Compute and plot the seasonally adjusted data.**
+
+```{r}
+plastics %>%
+  decompose(type = 'multiplicative') -> fit
+autoplot(plastics, series = 'Data') +
+  autolayer(seasadj(fit), series = 'Seasonally Adjusted')
+
+```
+
+  **e. Change one observation to be an motlier (e.g., add 500 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?**
+
+```{r warning=FALSE}
+oplastics <- plastics
+oplastics[28] <- oplastics[28] + 500
+oplastics %>% 
+  decompose(type="multiplicative") -> ofit
+autoplot(oplastics, series = "Data") +
+  autolayer(trendcycle(ofit), series = "Trend") +
+  autolayer(seasadj(ofit), series = "Seasonally Adjusted")
+```
+
+The effect of the outlier is a slight distortion in the trend’s straight line, but it has been mostly absorbed into the remainder component, as evident from the graph above. Therefore it is likely that the seasonal component hasn’t changed much because of the outlier. This conclusion is confirmed by the decomposition plot below as well.
+
+
+```{r fig.height=4, fig.width=7}
+oplastics %>% 
+  decompose(type="multiplicative") %>%
+  autoplot()
+```
+
+  **f. Does it make any difference if the outlier is near the end rather than in the middle of the time series?**
+
+```{r warning=FALSE}
+oplastics <- plastics
+oplastics[57] <- oplastics[57] + 500
+
+oplastics %>% 
+  decompose(type="multiplicative") -> ofit
+autoplot(oplastics, series = "Data") +
+  autolayer(trendcycle(ofit), series = "Trend") +
+  autolayer(seasadj(ofit), series = "Seasonally Adjusted")
+```
+
+```{r fig.height=4, fig.width=7}
+oplastics %>% 
+  decompose(type="multiplicative") %>%
+  autoplot()
+```
+
+There would be no difference because there is no weight distribution. As the plots showed, there is less distortion when an outlier presented near the end-point. Although there is a spike in the trend, there has no effect on the seasonality of this time-series. As well as the reminder, there is evidence of the outlier effect upon them. 
+
+
+## Problem_6.3
+
+Recall your retail time series data (from Exercise 3 in Section 2.10). Decompose the series using X11. Does it reveal any outliers, or unusual features that you had not noticed previously?
+
+```{r}
+retaildata <- readxl::read_excel("retail.xlsx", skip = 1)
+myts <- ts(retaildata[,"A3349398A"], frequency=12, start=c(1982,4))
+autoplot(myts)
+```
+
+```{r fig.height=4, fig.width=7}
+myts %>% 
+  seas(x11="") -> fit
+autoplot(fit) +
+  ggtitle("X11 decomposition of Retail data")
+```
+
+The decomposition indicates that the seasonality pattern was unchanged during the given timeframe; however the peak of the annual seasonal increases from 1985 to 2001 when it then started to decrease. Also, we cannot identify a clear evidence of outlier after the decomposition. 
+
+-------
+
+^[GithHub repo] [Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
+
+
