@@ -1,0 +1,329 @@
+---
+title: "Homework 7 Predictive analytics"
+author: "Salma Elshahawy"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Homework 7 Predictive analytics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+[Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	fig.height = 3,
+	fig.width = 7,
+	message = FALSE,
+	warning = FALSE,
+	collapse = TRUE,
+	comment = "#>"
+)
+library(AppliedPredictiveModeling)
+library(elasticnet)
+library(pls)
+library(caret)
+library(tidyverse)
+theme_set(theme_classic())
+```
+
+
+## Problem 6.2 
+
+Developing a model to predict permeability (see Sect. 1.4) could save significant resources for a pharmaceutical company, while at the same time more rapidly identifying molecules that have a sufficient permeability to become a drug:
+
+(a) Start R and use these commands to load the data
+
+```{r}
+data(permeability)
+```
+
+The matrix `fingerprints` contains the 1,107 binary molecular predictors for the 165 compounds, while permeability contains permeability response.
+
+(b) The fingerprint predictors indicate the presence or absence of substructures of a molecule and are often sparse meaning that relatively few of the molecules contain each substructure. Filter out the predictors that have low frequencies using the nearZeroVar function from the caret package. How many predictors are left for modeling?
+
+```{r}
+remove.cols <- nearZeroVar(fingerprints)
+X <- fingerprints[,-remove.cols]
+
+length(remove.cols) %>% paste(' columns are removed. ', dim(X)[2], ' columns are left for modeling.' ,sep='') %>% print()
+```
+
+
+(c) Split the data into a training and a test set, pre-process the data, and tune a PLS model. How many latent variables are optimal and what is the corresponding resampled estimate of R^2?
+
+
+Below, the data is splitted into train/test set, using the createDataPartition function.
+
+
+```{r}
+set.seed(1)
+trainRow <- createDataPartition(permeability, p=0.8, list=FALSE)
+X.train <- X[trainRow, ]
+y.train <- permeability[trainRow, ]
+X.test <- X[-trainRow, ]
+y.test <- permeability[-trainRow, ]
+```
+
+
+I used the train function to perform the pre-process and tuning together. The function first preprocess the training set by centering it and scaling it. Then the function uses 10-fold cross validation to try the ncomp parameter (number of components, i.e. latent variables) of the PLS model from 1 to 20.
+
+```{r}
+set.seed(1)
+plsFit <- train(x=X.train,
+                y=y.train, 
+                method='pls',
+                metric='Rsquared',
+                tuneLength=20,
+                trControl=trainControl(method='cv'),
+                preProcess=c('center', 'scale')
+                )
+
+plsResult <- plsFit$results
+plsFit
+```
+
+```{r}
+plot(plsFit)
+
+```
+
+Using R^2 as the deciding metric, the CV found the optimal ncomp to be 12, with the maximum R^2 being 0.530788. 
+
+(d) Predict the response for the test set. What is the test set estimate of R^2?
+
+The postResample function from the caret package can be use to find the R^2 in the test set, using the selected model.
+
+```{r}
+plsPred <- predict(plsFit, newdata=X.test)
+postResample(pred=plsPred, obs=y.test)
+```
+
+(e) Try building other models discussed in this chapter. Do any have better predictive performance?
+
+I will utilize the following types:
+
+  1. Ridge regression, parameter tuned: lambda (from 0 to 1 by 0.1)
+  2. Lasso, parameter tuned: fraction (from 0 to 0.5 by 0.05)
+  3. Elastic net, parameters tuned: fraction and lambda (2-D grid with each D from 0 to 1 by 0.1)
+  
+I ensure that all of the models have the same seed, so their CV sets are identical. This way, I can then use the resamples functions to compare all 4 models at once. The R^2 metrics are used in all cases.
+
+```{r}
+set.seed(1)
+ridgeFit <- train(x=X.train,
+                  y=y.train,
+                  method='ridge',
+                  metric='Rsquared',
+                  tuneGrid=data.frame(.lambda = seq(0, 1, by=0.1)),
+                  trControl=trainControl(method='cv'),
+                  preProcess=c('center','scale')
+                  )
+ridgeFit
+```
+
+```{r}
+plot(ridgeFit)
+```
+```{r}
+set.seed(1)
+lassoFit <- train(x=X.train,
+                  y=y.train,
+                  method='lasso',
+                  metric='Rsquared',
+                  tuneGrid=data.frame(.fraction = seq(0, 0.5, by=0.05)),
+                  trControl=trainControl(method='cv'),
+                  preProcess=c('center','scale')
+                  )
+lassoFit
+```
+
+```{r}
+plot(lassoFit)
+
+```
+
+```{r}
+set.seed(1)
+enetFit <- train(x=X.train,
+                 y=y.train,
+                 method='enet',
+                 metric='Rsquared',
+                 tuneGrid=expand.grid(.fraction = seq(0, 1, by=0.1), 
+                                      .lambda = seq(0, 1, by=0.1)),
+                 trControl=trainControl(method='cv'),
+                 preProcess=c('center','scale')
+                  )
+enetFit
+```
+
+
+```{r fig.height=5}
+plot(enetFit)
+
+```
+
+```{r}
+resamp <- resamples(list(PLS=plsFit, Ridge=ridgeFit, Lasso=lassoFit, enet=enetFit))
+(resamp.s <- summary(resamp))
+```
+
+The model with the maximum R^2 appears to be the elastic net model, with R^2 = 0.5524289.
+
+Below, I also evaluate the models using the test set:
+
+```{r}
+plsPred <- predict(plsFit, newdata=X.test)
+postResample(pred=plsPred, obs=y.test)
+```
+
+```{r}
+multiResample <- function(models, newdata, obs){
+  res = list()
+  methods = c()
+  i = 1
+  for (model in models){
+    pred <- predict(model, newdata=newdata)
+    metrics <- postResample(pred=pred, obs=obs)
+    res[[i]] <- metrics
+    methods[[i]] <- model$method
+    i <- 1 + i
+  }
+  names(res) <- methods
+  return(res)
+}
+
+models <- list(plsFit, ridgeFit, lassoFit, enetFit)
+(resampleResult <- multiResample(models, X.test, y.test))
+```
+
+The evaluation on the test sets seems to suggest that the Lasso model is best, with R^2 = 0.4595602. Here we seem to have a dilemma: the 10-fold cross validations suggest that the elastic net model is the best, while the test set evaluation suggest that the Lasso model is the best. Here, I would choose to trust the cross validation result, because the cross validation result is closer approximation to the true distribution than the test set, which is equivalent to just one fold of the whole set.
+
+Nonetheless, the scores for the Ridge, Lasso, and Enet are all higher (better performance) than the PLS.
+
+  (f) Would you recommend any of your models to replace the permeability laboratory experiment?
+
+I would not recommend any of the models to replace the permeability laboratory experiment. The MAE of all of the models are roughly between 8 and 9, meaning that the model predictions are on average +/- 8 to 9 off. Looking at the histogram of the target variable permeability:
+
+```{r fig.height=5}
+hist(permeability)
+
+```
+
+We can see that most of permeability are under 10. The model’s accuracy is not good enough to replace lab test.
+
+
+## Problem 6.3
+
+A chemical manufacturing process for a pharmaceutical product was discussed in Sect. 1.4. In this problem, the objective is to understand the relationship between biological measurements of the raw materials (predictors), measurements of the manufacturing process (predictors), and the response of product yield. Biological predictors cannot be changed but can be used to assess the quality of the raw material before processing. On the other hand, manufacturing process predictors can be changed in the manufacturing process. Improving product yield by 1% will boost revenue by approximately one hundred thousand dollars per batch:
+
+(a) Start R and use these commands to load the data.
+
+```{r}
+data(ChemicalManufacturingProcess)
+
+```
+
+The matrix processPredictors contains the 57 predictors (12 describing the input biological material and 45 describing the process predictors) for the 176 manufacturing runs. yield contains the percent yield for each run.
+
+(b) A small percentage of cells in the predictor set contain missing values. Use an imputation function to fill in these missing values (e.g., see Sect. 3.8).
+
+The preProcess function can be used to impute the imssing value. I choose to use the ‘bagImpute’ method, which impute the missing values through bagged tree model.
+
+```{r}
+(cmpImpute <- preProcess(ChemicalManufacturingProcess[,-c(1)], method=c('bagImpute')))
+
+```
+
+```{r}
+cmp <- predict(cmpImpute, ChemicalManufacturingProcess[,-c(1)])
+
+```
+
+(c) Split the data into a training and a test set, pre-process the data, and tune a model of your choice from this chapter. What is the optimal value of the performance metric?
+
+```{r}
+set.seed(1)
+trainRow <- createDataPartition(ChemicalManufacturingProcess$Yield, p=0.8, list=FALSE)
+X.train <- cmp[trainRow, ]
+y.train <- ChemicalManufacturingProcess$Yield[trainRow]
+X.test <- cmp[-trainRow, ]
+y.test <- ChemicalManufacturingProcess$Yield[-trainRow]
+```
+
+The elastic net model is tuned using 10-fold cross validation with parameters lambda ranging from 0 to 1, and fraction ranging from 0 to 1. The metric used to decide is the RMSE.
+
+```{r fig.height=5}
+set.seed(1)
+enetFit <- train(x=X.train,
+                 y=y.train,
+                 method='enet',
+                 metric='RMSE',
+                 tuneGrid=expand.grid(.fraction = seq(0, 1, by=0.1), 
+                                      .lambda = seq(0, 1, by=0.1)),
+                 trControl=trainControl(method='cv'),
+                 preProcess=c('center','scale')
+                  )
+plot(enetFit)
+```
+
+The best parameter combo is fraction = 0.5, lambda = 0.2, with the RMSE = 1.1920333.
+
+(d) Predict the response for the test set. What is the value of the performance metric and how does this compare with the resampled performance metric on the training set?
+
+```{r}
+enetPred <- predict(enetFit, newdata=X.test)
+(predResult <- postResample(pred=enetPred, obs=y.test))
+```
+
+The test set RMSE is 1.0292796. This is lower than the resampled performance metric (cross validated RMSE) on the training set. So the test set result appears to be better than the training set result.
+
+(e) Which predictors are most important in the model you have trained? Do either the biological or process predictors dominate the list?
+
+The coefficients of the best-tuned elastic net model is below. We can see that the elastic net zero out some of the predictors, due to the lasso penalty.
+
+```{r}
+(coeffs <- predict.enet(enetFit$finalModel, s=enetFit$bestTune[1, "fraction"], type="coef", mode="fraction")$coefficients)
+```
+
+We can compare the non-zero coefficients by taking their absolute value, and then sorting them:
+
+```{r}
+coeffs.sorted <- abs(coeffs)
+coeffs.sorted <- coeffs.sorted[coeffs.sorted>0]
+(coeffs.sorted <- sort(coeffs.sorted, decreasing = T))
+```
+
+We can conclude the following:
+
+  - 26 out of the 45 ManufacturingProcess predictors are zero’d out, while 7 out of the 12 BiologicalMaterial predictors are zero’d out.
+  - In the remaining 24 predictors, 19 are ManufacturingProcess predictors and just 5 are BiologicalMaterial predictors
+  - The top 7 highest absolute coefficients are all from the ManufacturingProcess predictors.
+  - It appears that ManufacturingProcess are more important. Alternatively, varImp function can be used to rank the importance of predictors:
+  
+```{r}
+varImp(enetFit)
+```
+
+
+Again, 11 out of the 20 in the list are ManufacturingProcess predictors, which makes it more important than BiologicalMaterial.
+
+(f) Explore the relationships between each of the top predictors and the response. How could this information be helpful in improving yield in future runs of the manufacturing process?
+
+Elastic net is a linear regression model. The coefficients directly explain how the predictors affect the target. Positive coefficients improve the yield, while negative coefficients decrease the yield.
+
+For the ManufacturingProcess having the positive coefficients, I would alter the process such that the predictor value increases. Below are the ManufacturingProcess having positive coefficients:
+
+```{r}
+coeffs.mp <- coeffs.sorted[grep('ManufacturingProcess', names(coeffs.sorted))] %>% names() %>% coeffs[.]
+coeffs.mp[coeffs.mp>0]
+```
+
+For the ManufacturingProcess having the negative coefficients, I would alter the process such that the predictor value decreases. Below are the ManufacturingProcess having negative coefficients:
+
+
+```{r}
+coeffs.mp[coeffs.mp<0]
+```
+
