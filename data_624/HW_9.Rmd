@@ -1,0 +1,418 @@
+---
+title: "Homework 9 Predictive analytics"
+author: "Salma Elshahawy"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Homework 9 Predictive analytics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+[Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+library(tidyverse)
+library(kableExtra)
+library(tidyr)
+library(RColorBrewer)
+library(gbm)
+library(randomForest)
+library(caret)
+library(rattle)
+library(party)
+library(rpart)
+library(mlbench)
+theme_set(theme_classic())
+```
+
+## Question 8.1
+
+Recreate the simulated data from Exercise 7.2
+
+```{r}
+set.seed(200)
+simulated <- mlbench.friedman1(200, sd = 1)
+simulated <- cbind(simulated$x, simulated$y)
+simulated <- as.data.frame(simulated)
+colnames(simulated)[ncol(simulated)] <- "y"
+```
+
+### Part A
+
+Fit a random fores model to all the predictors, then estimate the variable importance scores:
+
+```{r 8_1_A}
+rf_model_1 <- randomForest(y ~ ., data = simulated, importance = TRUE, ntree = 1000)
+rf_imp_1 <- varImp(rf_model_1, scale = FALSE)
+rf_imp_1  %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(Variable = rowname) %>%
+  arrange(desc(Overall)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+Did the random forest model significantly use the uninformative predictors (V6-V10)?
+
+**No.  The scores are very close to zero indicating they are uninformative.**
+
+### Part B
+
+Now add an additional predictor that is highly correlated with one of the informative predictors.  For example:
+
+```{r, null_prefix = TRUE}
+simulated$duplicate1 <- simulated$V1 + rnorm(200) * .1
+cor(simulated$duplicate1, simulated$V1)
+```
+
+Fit another random forest model to these data.  Did the importance score for V1 change?  What happens when you add another predictor that is also highly correlated with V1?
+
+```{r 8_1_B}
+rf_model_2 <- randomForest(y ~ ., data = simulated, importance = TRUE, ntree = 1000)
+rf_imp_2 <- varImp(rf_model_2, scale = FALSE)
+rf_imp_2 %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(Variable = rowname) %>%
+  arrange(desc(Overall)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+**The importance of `v1` has decreased significantly since adding the additional correlated predictor.  When adding the correlated predictor, both were included in the decision trees as significant predictors.  This caused the overall significance to decrease.**
+
+### Part C
+
+Use the `cforest` function in the `party` package to fit a random forest model using conditional inference trees.  The `party` package function `varimp` can calculate predictor importance.  The `conditional` argument of that function toggles between the traditional importance measure and the modified version described in Stobl et al. (2007).  Do these importance show the same pattern as the traditional random forest model?
+
+```{r 8_1_C}
+rf_model_3 <- cforest(y ~ ., data = simulated)
+rf_imp_3 <- varImp(rf_model_3, conditional = TRUE)
+rf_imp_3 %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(Variable = rowname) %>%
+  arrange(desc(Overall)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+### Part D
+
+Repeat this process with different tree models, such as boosted trees and Cubist.  Does the same pattern occur?
+
+#### Boosted Tree
+
+**Training it without the duplicate predictor:**
+
+```{r 8_1_D_gbm}
+gbm_grid <- expand.grid(.interaction.depth = seq(1, 7, by = 2),
+                        .n.trees = seq(100, 1000, by = 100),
+                        .shrinkage = c(0.01, 0.1),
+                        .n.minobsinnode = 10)
+gbm_model_1 <- train(y ~ ., data = select(simulated, -duplicate1), method="gbm", tuneGrid = gbm_grid, verbose = FALSE)
+
+gbm_imp_1 <- varImp(gbm_model_1) 
+
+gbm_imp_1$importance %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(Variable = rowname) %>%
+  arrange(desc(Overall)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+**The boosted tree did not pick up the uninformative predictors.  Now let's see what happens when I train it WITH the duplicate predictor:**
+
+```{r}
+gbm_model_2 <- train(y ~ ., data = simulated, method="gbm", tuneGrid = gbm_grid, verbose = FALSE)
+
+gbm_imp_2 <- varImp(gbm_model_2) 
+
+gbm_imp_2$importance %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(Variable = rowname) %>%
+  arrange(desc(Overall)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+**This model exhibits the same pattern.  The duplicate becomes one of the important variables and the importance of `v1` decreases.**
+
+#### Cubist
+
+**Again training it without the duplicate predictor:**
+
+```{r 8_1_D_cubist}
+cubist_model_1 <- train(y ~ ., data = select(simulated, -duplicate1), method="cubist")
+
+cubist_imp_1 <- varImp(cubist_model_1) 
+
+cubist_imp_1$importance %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(Variable = rowname) %>%
+  arrange(desc(Overall)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+**Once again, the cubist model does not pick up the un-important variables.  Let's train it WITH the duplicate predictor and see what happens:**
+
+```{r}
+cubist_model_2 <- train(y ~ ., data = simulated, method="cubist")
+
+cubist_imp_2 <- varImp(cubist_model_2) 
+
+cubist_imp_2$importance %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(Variable = rowname) %>%
+  arrange(desc(Overall)) %>%
+  kable() %>%
+  kable_styling()
+```
+
+**The cubist model also exhibits a similar behavior as the random forest model, but is not as pronounced.**
+
+## Question 8.2
+
+Use a simulation to show tree bias with different granularities.
+
+**I will create a simulated dataset generated by a non-linear function.  I will then train the tree based models with varying levels of pruning.  I will then look at the MSE on the training set and test set in relation to the complexity of the tree.**
+
+```{r 8_2}
+set.seed(42)
+
+n_sample <- 350
+
+nonlinear_function <- function(x){
+  sin(1.25 * x) + 2 * cos(.25*x)
+}
+
+x <- runif(n_sample, 1, 25)
+f_of_x <- nonlinear_function(x)
+noise <- rnorm(n_sample, 0, 2)
+y <- f_of_x + noise
+
+
+df <- data.frame(y=y, x=x)
+in_train <- createDataPartition(df$y, p = .8, list = FALSE, times = 1)
+train_df <- df[in_train,]
+test_df <- df[-in_train,]
+
+
+results <- data.frame(Granularity = c(NA), MSE = c(NA), data = c(NA)) %>% na.omit()
+
+get_mse <- function(model, data){
+  y_hat <- predict(model, data)
+  mse <- mean((y_hat - data$y)^2)
+  return(mse)
+}
+
+for(depth in seq(1:10)){
+  rtree_model <- rpart(y ~ x, data = train_df, control=rpart.control(maxdepth=depth))
+  results <- rbind(results, data.frame(Granularity = depth, MSE = get_mse(rtree_model, train_df), data = "Training"))
+  results <- rbind(results, data.frame(Granularity = depth, MSE = get_mse(rtree_model, test_df), data = "Test"))
+}
+
+ggplot(results, aes(Granularity, MSE, color = data, group = data)) +
+  geom_line() +
+  geom_point() +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "bottom", legend.title = element_blank())
+```
+
+**One can see that as the granularity of the tree model increases, the MSE on the training set decreases.  However the MSE on the test set initially begins to decline then increases again as the model starts to overfit the training data.**
+
+## Question 8.3
+
+In stocastic gradient boosting the bagging fraction and learning rate will govern the construction of the trees as they are guided by the gradient.  Although the optimal values of these parameters should be obtained through the tuning process, it is helpful to understand how the magnitudes of these parameters affect magnitudes of variable importance.  Figure 8.24 provides the variable importance plots for boosting using two extreme values for the bagging fraction (0.1. and 0.9) and the learning rate (0.1 and 0.9) for the solubility data.  The left-hand plot has both parameters set to 0.1, and the right-hand plot has both set to 0.9:
+
+
+### Part A
+
+Why does the model on the right focus its importance on just the first few of predictors, whereas the model on the left spreads importance across more predictors?
+
+**Because the learning rate is set to 0.1, the importance get's spread out over more predictors.  The higher learning rate will focus the importance on a smaller set of variables.**
+
+### Part B
+
+Which model do you think would be more predictive of other samples?
+
+**The one on the left.  It will generalize while the one on the right will overfit the training data.  Always go for an ensemble of weak predictors.**
+
+### Part C
+
+How would increasing interaction depth affect the slope of predictor importance for either model in Fig. 8.24?
+
+**The predictor importance would get spread across more predictors as the interaction depth would increase.  The slope would decrease.**
+
+
+## Question 8.7
+
+Refer to Exercises 6.3 and 7.5 which describe a chemical manufacturing process.  Use the same data imputation, data splitting, and pre-processing steps as before and train several tree-based models:
+
+### Part A
+
+Which tree-based regression model gives the optimal resampling and test set performance?
+
+```{r 8_7_A_pls}
+library(AppliedPredictiveModeling)
+data(ChemicalManufacturingProcess)
+
+# Make this reproducible
+set.seed(42)
+
+knn_model <- preProcess(ChemicalManufacturingProcess, "knnImpute")
+df <- predict(knn_model, ChemicalManufacturingProcess)
+
+df <- df %>%
+  select_at(vars(-one_of(nearZeroVar(., names = TRUE))))
+
+in_train <- createDataPartition(df$Yield, times = 1, p = 0.8, list = FALSE)
+train_df <- df[in_train, ]
+test_df <- df[-in_train, ]
+
+pls_model <- train(
+  Yield ~ ., data = train_df, method = "pls",
+  center = TRUE,
+  scale = TRUE,
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 25
+)
+pls_predictions <- predict(pls_model, test_df)
+pls_in_sample <- pls_model$results[pls_model$results$ncomp == pls_model$bestTune$ncomp,]
+results <- data.frame(t(postResample(pred = pls_predictions, obs = test_df$Yield))) %>%
+  mutate("In Sample RMSE" = pls_in_sample$RMSE,
+         "In Sample Rsquared" = pls_in_sample$Rsquared,
+         "In Sample MAE" = pls_in_sample$MAE,
+         "Model"= "PLS")
+pls_model
+```
+
+**I'm going to fit the data against a series of tree based models.  I will use caret and try to match the same paramaters to guague th preformance against the similar PLS model.**
+
+
+#### Bagged Tree
+
+```{r 8_7_A_bag}
+set.seed(42)
+bagControl = bagControl(fit = ctreeBag$fit, predict = ctreeBag$pred, aggregate = ctreeBag$aggregate)
+bag_model <- train(Yield ~ ., data = train_df, method="bag", bagControl = bagControl,
+                   center = TRUE,
+                   scale = TRUE,
+                   trControl = trainControl("cv", number = 10),
+                   tuneLength = 25)
+bag_predictions <- predict(bag_model, test_df)
+bag_in_sample <- merge(bag_model$results, bag_model$bestTune)
+results <- data.frame(t(postResample(pred = bag_predictions, obs = test_df$Yield))) %>%
+  mutate("In Sample RMSE" = bag_in_sample$RMSE,
+         "In Sample Rsquared" = bag_in_sample$Rsquared,
+         "In Sample MAE" = bag_in_sample$MAE,
+         "Model"= "Bagged Tree") %>%
+  rbind(results)
+bag_model
+```
+#### Boosted Tree
+
+```{r 8_7_A_gbm}
+set.seed(42)
+gbm_model <- train(Yield ~ ., data = train_df, method="gbm", verbose = FALSE,
+                   trControl = trainControl("cv", number = 10),
+                   tuneLength = 25)
+gbm_predictions <- predict(gbm_model, test_df)
+gbm_in_sample <- merge(gbm_model$results, gbm_model$bestTune)
+results <- data.frame(t(postResample(pred = gbm_predictions, obs = test_df$Yield))) %>%
+  mutate("In Sample RMSE" = gbm_in_sample$RMSE,
+         "In Sample Rsquared" = gbm_in_sample$Rsquared,
+         "In Sample MAE" = gbm_in_sample$MAE,
+         "Model"= "Boosted Tree") %>%
+  rbind(results)
+gbm_model
+```
+
+#### Random Forest
+
+```{r 8_7_A_rf}
+set.seed(42)
+rf_model <- train(Yield ~ ., data = train_df, method = "ranger", 
+                  scale = TRUE,
+                  trControl = trainControl("cv", number = 10),
+                  tuneLength = 25)
+rf_predictions <- predict(rf_model, test_df)
+rf_in_sample <- merge(rf_model$results, rf_model$bestTune)
+results <- data.frame(t(postResample(pred = rf_predictions, obs = test_df$Yield))) %>%
+  mutate("In Sample RMSE" = rf_in_sample$RMSE,
+         "In Sample Rsquared" = rf_in_sample$Rsquared,
+         "In Sample MAE" = rf_in_sample$MAE,
+         "Model"= "Random Forest") %>%
+  rbind(results)
+rf_model
+```
+
+#### Conditional Inference Random Forest
+
+```{r 8_7_A_crf}
+set.seed(42)
+crf_model <- train(Yield ~ ., data = train_df, method = "cforest",
+                   trControl = trainControl("cv", number = 10),
+                   tuneLength = 25)
+crf_predictions <- predict(crf_model, test_df)
+crf_in_sample <- merge(crf_model$results, crf_model$bestTune)
+results <- data.frame(t(postResample(pred = crf_predictions, obs = test_df$Yield))) %>%
+  mutate("In Sample RMSE" = crf_in_sample$RMSE,
+         "In Sample Rsquared" = crf_in_sample$Rsquared,
+         "In Sample MAE" = crf_in_sample$MAE,
+         "Model"= "Conditional Random Forest") %>%
+  rbind(results)
+crf_model
+```
+
+#### Results
+
+```{r 8_7_A_results}
+results %>%
+  arrange(RMSE) %>%
+  kable() %>%
+  kable_styling()
+```
+
+**All tree model's fit the in sample data better than the PLS model.  However they may have overfit the data as the RMSE on the test set is higher for the random forest and boosted tree.  The boosted tree model is the only on that out preformed the PLS on the test set.**
+
+### Part B
+
+Which predictors are most important in the optimal tree-based regression model?  Do either the biological or process variables dominate the list?  How do the top 10 important predictors compare to the top 10 predictors for the optimal linear and nonlinear models?
+
+**Here's the top ten predictors:**
+
+```{r 8_7_B_bag}
+varImp(bag_model)
+```
+
+**The manufacturing process variables continue to dominate the list.  The same variables are found in both lists (in different orders of importance)**
+
+```{r 8_7_B_pls}
+varImp(pls_model)
+```
+
+### Part C
+
+Plot the optimal single tree with the distribution of yield in the terminal nodes.  Does this view of the data provide additional knowledge about the biological or process predictors and their relationship with yield?
+
+```{r 8_7_C}
+set.seed(1)
+cart_model <- train(Yield ~ ., data = train_df, method = "rpart",
+                    trControl = trainControl("cv", number = 10),
+                    tuneLength = 25)
+fancyRpartPlot(cart_model$finalModel, sub="")
+```
+
+**This indicates that if you want to maximize yield, then the manufacturing process 32 must be greater than or equal to 0.19, process 13 < -0.85 and the Biological material 3 >= 0.49.  This recipe will produce the greatest yield.  Caution should be used however as this model is likely overfitting the training data.**
