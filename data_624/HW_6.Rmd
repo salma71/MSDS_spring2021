@@ -35,7 +35,7 @@ theme_set(theme_classic())
 
 ## Problem 8.1
 
-Figure 8.31 shows the ACFs for 36 random numbers, 360 random numbers and 1,000 random numbers.
+**Figure 8.31 shows the ACFs for 36 random numbers, 360 random numbers and 1,000 random numbers.**
 
 ![fig1](/Users/salmaelshahawy/Desktop/MSDS_spring2021/data_624/fig1.png){width=75%}
 
@@ -45,10 +45,7 @@ The difference between the figures is caused by the length of the time series, w
 
   **b. Why are the critical values at different distances from the mean of zero? Why are the autocorrelations different in each figure when they each refer to white noise?**
   
-The critical values are at different distances from the mean of 0 because of distance depends on the size of the time series. Since the length of each series are significantly different, there will be different acceptable ranges for white noise, defined by the following equation:
-
-$$\pm 2 / \sqrt{T}$$
-where t is the length of the time series
+The critical values are at different distances from the mean of 0 because of distance depends on the size of the time series. Since the length of each series are significantly different, there will be different acceptable ranges for white noise, defined by the following equation: $\pm 2 / \sqrt{T}$ where t is the length of the time series
 
 ## problem 8.2
 
@@ -74,7 +71,9 @@ Most of the auto-correlations fall within the interval. Additionally, The portma
 ggtsdisplay(ibmclose %>% log()  %>% diff(1))
 
 ```
-As illustrated in the residual plot, there is an increasing trend in the residual overtime. 
+
+As illustrated in the residual plot, there is **an increasing trend in the residual overtime**. 
+
 
 ```{r}
 Box.test(ibmclose %>% log()  %>% diff(1),lag=10, fitdf=0, type="Lj")
@@ -88,24 +87,28 @@ ibmclose %>%
   summary()
 ```
 
+-------
 
 ## Problem 8.3
 
 For the following series, find an appropriate Box-Cox transformation and order of differencing in order to obtain stationary data.
 
-  a. `usnetelec`
+  a. **`usnetelec`**
   
 ```{r}
 autoplot(usnetelec)
 ```
 
-The plot for `usnetelec` shows an upward trend, which must be addressed to obtain stationary data.
+The plot for `usnetelec` shows an **upward trend**, which must be addressed to obtain stationary data.
+
 
 ```{r fig.height=5}
 ggtsdisplay(usnetelec)
 ```
 
-The ACF and PACF plots tell us that most of the autocorrelation comes from the previous time series value. We can difference at lag = 1 to correct this.
+
+The ACF and PACF plots tell us that most of the **autocorrelation comes from the previous time series value**. We can difference at lag = 1 to correct this.
+
 
 ```{r fig.height=5}
 ggtsdisplay(usnetelec %>% sqrt() %>% diff(1))
@@ -119,13 +122,13 @@ Box.test(usnetelec %>% sqrt() %>% diff(1),lag=10, fitdf=0, type="Lj")
 usnetelec %>% sqrt() %>% diff(1) %>% ur.kpss() %>% summary()
 ```
 
-  b. `usgdp`
+  b. **`usgdp`**
   
 ```{r}
 ggseasonplot(usgdp, polar = TRUE)
 ```
 
-The plot for usgdp shows an upward trend, which must be addressed to obtain stationary data. There does not seem to be significant seasonality.
+The plot for usgdp shows an **upward trend**, which must be addressed to obtain stationary data. There does not seem to be significant seasonality.
 
 
 ```{r fig.height=5}
@@ -151,9 +154,10 @@ Box.test(usgdp %>% BoxCox(BoxCox.lambda(usgdp)) %>% diff(1),lag=24, fitdf=0, typ
 usgdp %>% BoxCox(BoxCox.lambda(usgdp)) %>% diff(1) %>% ur.kpss() %>% summary()
 ```
 
-  c. `mcopper`
+  c. **`mcopper`**
   
 The plot for usgdp shows an upward trend, which must be addressed to obtain stationary data. There does not seem to be significant seasonality. There is some changing variability than can be addressed with a BoxCox transform.
+
 
 ```{r}
 autoplot(mcopper)
@@ -181,7 +185,7 @@ Box.test(mcopper %>% log() %>% diff(1),lag=24, fitdf=0, type="Lj")
 mcopper %>% log() %>% diff(1) %>% ur.kpss() %>% summary()
 ```
 
-  d. `enplanements`
+  d. **`enplanements`**
   
 The time series plot for `enplanements` shows strong seasonality, an upwards trend, and changing variability.
 
@@ -206,7 +210,7 @@ Box.test(enplanements %>% BoxCox(BoxCox.lambda(enplanements))  %>% diff(12) %>% 
 enplanements %>% BoxCox(BoxCox.lambda(enplanements))  %>% diff(12) %>% diff(1) %>% ur.kpss() %>% summary()
 ```
 
-  e. visitors
+  e. **`visitors`**
   
 The time series plot for visitors shows strong seasonality, an upwards trend, and changing variability.
 
@@ -231,9 +235,11 @@ Box.test(visitors %>% BoxCox(BoxCox.lambda(visitors))  %>% diff(12) %>% diff(1),
 visitors %>% BoxCox(BoxCox.lambda(visitors))  %>% diff(12) %>% diff(1) %>% ur.kpss() %>% summary()
 ```
 
+----
+
 ## Problem 8.5
 
-For your retail data (from Exercise 3 in Section 2.10), find the appropriate order of differencing (after transformation if necessary) to obtain stationary data.
+**For your retail data (from Exercise 3 in Section 2.10), find the appropriate order of differencing (after transformation if necessary) to obtain stationary data.**
 
 Taking a look at this plot, a BoxCox transform will be needed because of the changing variance. Seasonal differencing may also be needed, because this data is highly seasonal. The upwards trend will also require differencing to address.
 
@@ -260,19 +266,20 @@ myts %>% BoxCox(BoxCox.lambda(myts)) %>% diff(12) %>% diff(1) %>% ur.kpss() %>% 
 
 ```
 
+------
 
 ## Problem 8.6
 
-Use R to simulate and plot some data from simple ARIMA models.
+**Use R to simulate and plot some data from simple ARIMA models.**
 
-  a. Use the following R code to generate data from an AR(1) model with ϕ1 = 0.6 and σ^2=1. The process starts with y1=0.
+  **a. Use the following R code to generate data from an AR(1) model with ϕ1 = 0.6 and σ^2=1. The process starts with y1=0.**
 
 ```{r}
 y <- ts(numeric(100))
 e <- rnorm(100)
 ```
 
-  b. Produce a time plot for the series. How does the plot change as you change ϕ1?
+  **b. Produce a time plot for the series. How does the plot change as you change ϕ1?**
 
 As ϕ1 increases, the time plot becomes smoother. Lower values of ϕ1 result in more variability in the time series.
 
@@ -289,7 +296,7 @@ autoplot(cbind(e, ar(.01), ar(.3), ar(.6), ar(1)), facet = TRUE)
 
 ```
 
-  c. Write your own code to generate data from an MA(1) model with θ1=0.6 and σ2=1.
+  **c. Write your own code to generate data from an MA(1) model with θ1=0.6 and σ2=1.**
   
 ```{r}
 ma <- function(theta){
@@ -303,7 +310,7 @@ ma(0.6)
 ```
 
 
-  d. Produce a time plot for the series. How does the plot change as you change θ1?
+  **d. Produce a time plot for the series. How does the plot change as you change θ1?**
 
 As θ1 changes, the pattern of the time series remains consistant. The scale of the time series values increases with θ1.
 
@@ -312,7 +319,7 @@ autoplot(cbind(e, ma(.1), ma(.6), ma(1), ma(3)), facet = TRUE)
 
 ```
 
-  e. Generate data from an ARMA(1,1) model with ϕ1=0.6, θ1=0.6 and σ2=1.
+  **e. Generate data from an ARMA(1,1) model with ϕ1=0.6, θ1=0.6 and σ2=1.**
 
 ```{r}
 y <- ts(numeric(100))
@@ -325,7 +332,7 @@ autoplot(y) +
   ggtitle('ARMA(1,1)')
 ```
 
-  f. Generate data from an AR(2) model with ϕ1=−0.8, ϕ2=0.3 and σ2=1. (Note that these parameters will give a non-stationary series.)
+  **f. Generate data from an AR(2) model with ϕ1=−0.8, ϕ2=0.3 and σ2=1. (Note that these parameters will give a non-stationary series.)**
 
 ```{r}
 y2 <- ts(numeric(100))
@@ -338,7 +345,7 @@ autoplot(y2) +
   ggtitle('AR(2)')
 ```
 
-  g. Graph the latter two series and compare them.
+  **g. Graph the latter two series and compare them.**
   
 The AR(2) series ends up oscillating around a mean of 0 with increasing variance over time. ARMA(1,1) is the better model, although it also has high autocorrelation.
 
@@ -352,9 +359,11 @@ ggAcf(y) + ggtitle('ARMA(1,1)')
 ggAcf(y2) + ggtitle('AR(2)')
 ```
 
+------
+
 ## Problem 8.7
 
-  a. Consider `wmurders`, the number of women murdered each year (per 100,000 standard population) in the United States. By studying appropriate graphs of the series in R, find an appropriate ARIMA(p, d, q) model for these data.
+  **a. Consider `wmurders`, the number of women murdered each year (per 100,000 standard population) in the United States. By studying appropriate graphs of the series in R, find an appropriate ARIMA(p, d, q) model for these data.**
 
 ```{r}
 autoplot(wmurders)
@@ -367,13 +376,15 @@ wmurders %>% diff() %>% ur.kpss() %>% summary()
 ```{r}
 ggtsdisplay(wmurders)
 ```
-  b. Should you include a constant in the model? Explain.
+  **b. Should you include a constant in the model? Explain.**
 
 A constant should not be included in this model, because we differenced the function. When d > 0, the Arima function will set the constant equal to 0.
 
-  c. Write this model in terms of the backshift operator.
+  **c. Write this model in terms of the backshift operator.**
+  
   $$(1-\phi_1B)(1-B)y_t = c + \epsilon_t$$
-  d. Fit the model using R and examine the residuals. Is the model satisfactory?
+  
+  **d. Fit the model using R and examine the residuals. Is the model satisfactory?**
   
 The residuals for an ARIMA(1, 1, 0) model are checked below. The p-value is not significant and autocorrelations for all lags are acceptable, therefore this model is satisfactory.
 
@@ -382,7 +393,7 @@ fit <- Arima(wmurders, c(1,1,0))
 checkresiduals(fit)
 ```
 
-  e. Forecast three times ahead. Check your forecasts by hand to make sure that you know how they have been calculated.
+  **e. Forecast three times ahead. Check your forecasts by hand to make sure that you know how they have been calculated.**
 
 ```{r}
 fit
@@ -415,13 +426,13 @@ for(i in 2:51){
 test
 ```
 
-  f. Create a plot of the series with forecasts and prediction intervals for the next three periods shown.
+  **f. Create a plot of the series with forecasts and prediction intervals for the next three periods shown.**
   
 ```{r}
 autoplot(forecast(fit, h=3))
 ```
 
-  g. Does auto.arima() give the same model you have chosen? If not, which model do you think is better?
+  **g. Does auto.arima() give the same model you have chosen? If not, which model do you think is better?**
   
 Auto.arima does not give the same model as my selection. My model projects a constant rate of women’s deaths, while the auto arima model projects decreasing rates over the next three years.
 
