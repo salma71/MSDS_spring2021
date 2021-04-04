@@ -1,0 +1,272 @@
+---
+title: "project_1 part A ATM Forcast "
+author: "Salma Elshahawy"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Homework 6 Predictive analytics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+[Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	fig.height = 3,
+	fig.width = 7,
+	message = FALSE,
+	warning = FALSE,
+	collapse = TRUE,
+	comment = "#>"
+)
+library(tidyverse)
+library(lubridate)
+library(kableExtra)
+library(readxl)
+library(fpp2)
+library(forecast)
+library(gridExtra)
+library(openxlsx)
+library(scales)
+theme_set(theme_classic())
+```
+
+
+## Part A – ATM Forecast, ATM624Data.xlsx
+
+In part A, I want you to forecast how much cash is taken out of 4 different ATM machines for May 2010.  The data is given in a single file.  The variable ‘Cash’ is provided in hundreds of dollars, other than that it is straight forward.   I am being somewhat ambiguous on purpose to make this have a little more business feeling.  Explain and demonstrate your process, techniques used and not used, and your actual forecast.  I am giving you data via an excel file, please provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual.rmd file  Also please submit the forecast which you will put in an Excel readable file.
+
+
+## Introduction
+
+For this part, we need to forecast how much cash will be taken out of 4 different ATM machines for May 2010.  
+Data was provided for this project.  The cash is in hundreds of dollars.
+
+## Data Exploration
+
+I will begin by plotting the cash withdrawn by each ATM.
+
+```{r}
+atm <- read_excel("ATM624Data.xlsx") %>%
+  mutate(DATE = as.Date(DATE, origin = "1899-12-30"),
+         ATM = as.factor(ATM)) %>%
+  data.frame()
+```
+
+```{r}
+atm %>%
+  ggplot(aes(DATE, Cash, color = ATM)) +
+  geom_line() +
+  ggtitle("Cash Withdrawal by Date and ATM") +
+  scale_color_brewer(palette = "Set1") +
+  scale_y_continuous(labels = comma) +
+  facet_wrap(.~ATM, ncol = 2) +
+  theme(legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_blank())
+```
+
+ATM4 was used at a higher rate than every other ATM in the data series.  There is an unusual spike in ATM4. There are some missing ATM labels in the data. Let's remove ATM4 and the missing label from the dataset and replot the visualization:
+
+```{r}
+atm %>%
+  filter(ATM != "ATM4") %>%
+  filter(!is.na(ATM)) %>%
+  ggplot(aes(DATE, Cash, color = ATM)) +
+  geom_line() +
+  facet_wrap(.~ATM, ncol = 2) +
+  ggtitle("Cash Withdrawal by Date and ATM") +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_blank())
+```
+
+It seems that ATM3 was not used until recently.  ATM #1 and #2 seem similar to each other.  It doesn't seem like there is much of a trend in the data.  Let's explore the distributions further:
+
+```{r}
+atm %>%
+  na.omit() %>%
+  ggplot(aes(ATM, Cash, color = ATM)) +
+  geom_boxplot() +
+  ggtitle("Cash Withdrawal by ATM") +
+  scale_color_brewer(palette = "Set1") +
+  facet_wrap(.~ATM, nrow = 2, scales = "free") +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+atm %>%
+  filter(!is.na(ATM)) %>%
+  group_by(ATM) %>%
+  summarise(Minimum = min(Cash, na.rm = T),
+            `1st Qu.` = quantile(Cash, .25, na.rm = T),
+            Mean = mean(Cash, na.rm = T),
+            Median = median(Cash, na.rm = T),
+            `3rd Qu.` = quantile(Cash, .75, na.rm = T),
+            Maximum = max(Cash, na.rm = T),
+            `NA's` = sum(is.na(Cash))) %>%
+  kable() %>%
+  kable_styling()
+```
+
+
+There is a pattern in the time series but fluctuations are very tight.  I wonder if it is explained by the day of the week.  For example, Friday and Saturday might have heavier usage and a Tuesday night might be calm.  Let's examine this hypothesis:
+
+```{r}
+atm %>%
+  na.omit() %>%
+  mutate(`Day of Week` = recode(as.factor(wday(DATE)), "1" = "Sunday", "2" = "Monday", "3" = "Tuesday", "4" = "Wednesday", "5" = "Thursday", "6" = "Friday", "7" = "Saturday"))  %>%
+  ggplot(aes(`Day of Week`, Cash, color = `Day of Week`)) +
+  geom_boxplot() +
+  facet_grid(ATM ~ `Day of Week`, scales = "free") +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "none", axis.title = element_blank(), axis.text.x = element_blank(), axis.ticks = element_blank())
+```
+
+It looks like there is some varriation based on the day of the week. Thursday looks to be less busy than the other days of the week.  There is so much variation between the 4 ATMs that each will be modeled separately.
+
+We will clean up the data to produce the forecasts.  Then explore some candidate modeling techniques.  Once we have a handful of candidates, we will prefrom a cross-validation on the models and get the RMSE.  The model that minimizes the RMSE during cross-validation will be selected as the model of choice.
+
+### ATM_1
+
+#### Data Cleanup
+
+There are 3 missing observations that need to be cleaned up.
+
+```{r}
+atm1 <- atm %>%
+  filter(ATM == "ATM1")
+atm1$clean_cash <- c(tsclean(ts(atm1$Cash, start = decimal_date(as.Date(min(atm1$DATE))), frequency = 365)))
+```
+
+Now that we have a complete data set I will create time series objects.  Since there is a weekly effect I will be using a frequency of 7.  This does mess up the dates in the plot however so please pay no reguard to them.
+
+```{r}
+ggtsplot <- function(ts, title) {
+  grid.arrange(
+    autoplot(ts) +
+      ggtitle(title) +
+      scale_y_continuous(labels = comma) +
+      theme(axis.title = element_blank()),
+    grid.arrange(
+      ggAcf(ts) + ggtitle(element_blank()),
+      ggPacf(ts) + ggtitle(element_blank()), ncol = 2)
+    , nrow = 2)
+}
+atm1_ts <- ts(atm1$clean_cash, start = decimal_date(as.Date(min(atm1$DATE))), frequency = 7)
+ggtsplot(atm1_ts, "ATM #1")
+```
+
+One readily observes the repeating peaks on every 7th lag.  There also seems to be an interesting negative correlation between the 1st and both the 3rd and the 5th lag.
+
+### Model Creation 
+
+#### STL Decomposition Models
+
+I will try a couple of seasonal decomposition models.  I will set the seasonal window to 7 so it picks up the day of the week variation.  
+
+```{r}
+atm1_ts %>%
+  stl(s.window = 7, robust = TRUE) %>%
+  autoplot()
+```
+
+This seems promising to me.  I will do STL decomposition forecasts using both the ETS and ARIMA models and check their residual plots
+
+#### STL + ETS
+
+```{r}
+h <- 31
+atm1_stl_ets_fit <- atm1_ts %>%
+  stlf(h = h, s.window = 7, robust = TRUE, method = "ets")
+checkresiduals(atm1_stl_ets_fit)
+```
+
+This model seems to hold merit and should be taken under consideration.
+
+#### STL + ARIMA
+
+```{r}
+atm1_stl_arima_fit <- atm1_ts %>%
+  stlf(h = h, s.window = 7, robust = TRUE, method = "arima")
+checkresiduals(atm1_stl_arima_fit)
+```
+
+This model also preformed well.  It is definately a candidate for the cross-validation stage.
+
+#### Holt-Winters
+
+```{r}
+atm1_hw_fit <- hw(atm1_ts, h = h)
+checkresiduals(atm1_hw_fit)
+```
+
+This method did a fairly good job.  I will move it on to the next phase.
+
+### Holt-Winters with Box Cox Adjustment
+
+```{r}
+atm1_lambda <- BoxCox.lambda(atm1_ts)
+atm1_adj_hw_fit <- hw(atm1_ts, h = h, lambda = atm1_lambda)
+checkresiduals(atm1_adj_hw_fit)
+```
+
+This seems to be a strong candidate.  We will see how if fares in the cross-validation.
+
+#### ARIMA
+
+```{r}
+atm1_arima_fit <- auto.arima(atm1_ts)
+checkresiduals(atm1_arima_fit)
+```
+
+This model looks like it is preforming well.  Let's see how all of them stack up.
+
+### Cross Validation
+
+In order to understand how well a model is likely to preform at predicting out of sample data, I will use the `tsCV` function and evaluate the models.  As prevously noted my goal is to minimize the RMSE.  First I will get the errors from the cross validation process, then I will compute the RMSE.
+
+```{r}
+get_rmse <- function(e) {
+  sqrt(mean(e^2, na.rm = TRUE))
+}
+atm1_arima_forecast <- function(x, h) {
+  forecast(Arima(x, order = c(0, 0, 1), seasonal = c(0, 1, 2)), h = h)
+}
+stl_ets_errors <- tsCV(atm1_ts, stlf, h = h, s.window = 7, robust = TRUE, method = "ets")
+stl_arima_errors <- tsCV(atm1_ts, stlf, h = h, s.window = 7, robust = TRUE, method = "arima")
+hw_errors <- tsCV(atm1_ts, hw, h = h)
+adj_hw_errors <- tsCV(atm1_ts, hw, h = h, lambda = atm1_lambda)
+arima_errors <- tsCV(atm1_ts, atm1_arima_forecast, h = h)
+data.frame(Model = c("STL ETS", "STL ARIMA", "ARIMA", "Holt-Winters", "Adjusted Holt-Winters"),
+           RMSE = c(get_rmse(stl_ets_errors[, h]), get_rmse(stl_arima_errors[, h]), get_rmse(arima_errors[, h]), get_rmse(hw_errors[, h]), get_rmse(adj_hw_errors[, h]))) %>%
+  arrange(RMSE) %>%
+  kable() %>%
+  kable_styling()
+```
+
+It looks like the ARIMA model perform good job predicting on the out of sample data set.  
+
+### Model Selection
+
+The ARIMA model would be selected to produce the forecast for ATM #1.  This because it is the model has more generalization and robustness across the cross validation.
+
+
+-----
+
+## Part B – Forecasting Power, ResidentialCustomerForecastLoad-624.xlsx
+
+Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file.  The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward.    Add this to your existing files above. 
+
+
+-----
+
+## Part C – BONUS, optional (part or all), Waterflow_Pipe1.xlsx and Waterflow_Pipe2.xlsx
+
+Part C consists of two data sets.  These are simple 2 columns sets, however they have different time stamps.  Your optional assignment is to time-base sequence the data and aggregate based on hour (example of what this looks like, follows).  Note for multiple recordings within an hour, take the mean.  Then to determine if the data is stationary and can it be forecast.  If so, provide a week forward forecast and present results via Rpubs and .rmd and the forecast in an Excel readable file.   
+
+
+
