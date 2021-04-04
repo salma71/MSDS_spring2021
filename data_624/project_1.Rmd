@@ -248,13 +248,276 @@ data.frame(Model = c("STL ETS", "STL ARIMA", "ARIMA", "Holt-Winters", "Adjusted 
   kable_styling()
 ```
 
+
 It looks like the ARIMA model perform good job predicting on the out of sample data set.  
 
 ### Model Selection
 
 The ARIMA model would be selected to produce the forecast for ATM #1.  This because it is the model has more generalization and robustness across the cross validation.
 
+----
 
+### ATM 2
+
+We will repeat the same process for ATM 2, then select the most generalized robust model using the cross validation.
+
+### Data Cleanup
+
+There are 2 missing observations.  This will be cleaned up using the `tsclean` function again.
+
+```{r}
+atm2 <- atm %>%
+  filter(ATM == "ATM2")
+atm2$clean_cash <- c(tsclean(ts(atm2$Cash, start = decimal_date(as.Date(min(atm2$DATE))), frequency = 365)))
+atm2_ts <- ts(atm2$clean_cash, start = decimal_date(as.Date(min(atm2$DATE))), frequency = 7)
+ggtsplot(atm2_ts, "ATM #2")
+```
+
+Once again the ACF plot has the regular spikes on evry multiple of 7.
+
+### Model Creation 
+
+#### STL Decomposition Models
+
+Again I will try a couple of seasonal decomposition models.  I will set the seasonal window to 7 so it picks up the day of the week variation.  
+
+```{r}
+atm2_ts %>%
+  stl(s.window = 7, robust = TRUE) %>%
+  autoplot()
+```
+
+This seems very similar to ATM #1.
+
+#### STL + ETS
+
+```{r}
+atm2_stl_ets_fit <- atm2_ts %>%
+  stlf(h = h, s.window = 7, robust = TRUE, method = "ets")
+checkresiduals(atm2_stl_ets_fit)
+```
+
+This model preformed much better than the it did for the ATM #1 time series.  It will be interesting to see how it does in cross-validation
+
+#### STL + ARIMA
+
+```{r}
+atm2_stl_arima_fit <- atm2_ts %>%
+  stlf(h = h, s.window = 7, robust = TRUE, method = "arima")
+checkresiduals(atm2_stl_arima_fit)
+```
+
+Interesting.  The residuals have a bit more spread but the left tail is shorter than the STL+ETS model.
+
+#### Holt-Winters
+
+```{r}
+atm2_hw_fit <- hw(atm2_ts, h = h)
+checkresiduals(atm2_hw_fit)
+```
+
+This method did not preform as well as the others.  I will, however keep it in so I can compare it to ATM #1's statistics.
+
+### Holt-Winters with Box Cox Adjustment
+
+```{r}
+atm2_lambda <- BoxCox.lambda(atm2_ts)
+atm2_adj_hw_fit <- hw(atm2_ts, h = h, lambda = atm2_lambda)
+checkresiduals(atm2_adj_hw_fit)
+```
+
+#### ARIMA
+
+```{r}
+atm2_arima_fit <- auto.arima(atm2_ts)
+checkresiduals(atm2_arima_fit)
+```
+
+This model looks like it is preforming well.  Let's see how all of them stack up.
+
+### Cross Validation
+
+In order to understand how well a model is likely to preform at predicting out of sample data, I will use the `tsCV` function and evaluate the models.  As previously noted my goal is to minimize the RMSE.  First I will get the errors from the cross validation process, then I will compute the RMSE.
+
+```{r}
+atm2_arima_forecast <- function(x, h) {
+  forecast(Arima(x, order = c(2, 0, 2), seasonal = c(0, 1, 1)), h = h)
+}
+stl_ets_errors <- tsCV(atm2_ts, stlf, h = h, s.window = 7, robust = TRUE, method = "ets")
+stl_arima_errors <- tsCV(atm2_ts, stlf, h = h, s.window = 7, robust = TRUE, method = "arima")
+hw_errors <- tsCV(atm2_ts, hw, h = h)
+adj_hw_errors <- tsCV(atm2_ts, hw, h = h, lambda = atm2_lambda)
+arima_errors <- tsCV(atm2_ts, atm2_arima_forecast, h = h)
+data.frame(Model = c("STL ETS", "STL ARIMA", "ARIMA", "Holt-Winters", "Adjusted Holt-Winters"),
+           RMSE = c(get_rmse(stl_ets_errors[, h]), get_rmse(stl_arima_errors[, h]), get_rmse(arima_errors[, h]), get_rmse(hw_errors[, h]), get_rmse(adj_hw_errors[, h]))) %>%
+  arrange(RMSE) %>%
+  kable() %>%
+  kable_styling()
+```
+
+Interesting.  It looks like the ARIMA model was the top preformer again.  I find it interesting that the RMSE is higher and more spread out for ATM #2.  ATM #1's RMSEs ranged from roughyl 30 to 39.  The RMSEs for ATM #2 ranged from 34 to 55.  There is more variability in this data that isn't captured by the model.
+
+### Model Selection
+
+As stated in the previous section I will use the ARIMA model to produce the forecast for ATM #2.
+
+## ATM #3
+
+This model is quite different from the two proceeding cases.  You can see it in the plot: 
+
+```{r}
+atm %>%
+  filter(ATM == "ATM3") %>%
+  mutate(nonzero = if_else(Cash == 0, "No", "Yes")) %>%
+  ggplot(aes(DATE, Cash, color = nonzero)) +
+  geom_point() +
+  ggtitle("ATM #3") +
+  scale_color_brewer(palette = "Set1") +
+  theme(axis.title = element_blank(), legend.position = "none")
+```
+
+Most of the values are zeros (points in red above), except for 3 points (shown in blue).  The three non-zero points are the most current.  This presents a serious challenge.
+
+### Model Creation/Selection
+
+There is one fundamental question with this dataset.  Are the three points an outlier, or is it the begining of the new normal?  If they are outliers one would expect the cash value to return to zero.  If the three points are an indication of change, then the historical data have little relevance.
+
+I will be assuming the new data are the begining of the new normal.  The challenge is we only have three data points.  In the absense of more data I will calculate the average of these three points and use it for the forecast with the recommendation to revise it frequently. As the average is only based off of three data points it should not be considered stable.
+
+```{r}
+atm3 <- atm %>%
+  filter(ATM == "ATM3", Cash > 0)
+atm3_mean <- mean(atm3$Cash)
+```
+
+## ATM #4
+
+This ATM is different too, but not as radically different as ATM #3.  I will be using the same approach used for ATM #1 and #2 with this ATM.
+
+### Data Cleanup
+
+There is one major outlier in the data set.  We will clean it up by simply by using the `tsclean` function once again.
+
+```{r}
+atm4 <- atm %>%
+  filter(ATM == "ATM4")
+atm4$clean_cash <- c(tsclean(ts(atm4$Cash, start = decimal_date(as.Date(min(atm4$DATE))), frequency = 365)))
+atm4_ts <- ts(atm4$clean_cash, start = decimal_date(as.Date(min(atm4$DATE))), frequency = 7)
+ggtsplot(atm4_ts, "ATM #4")
+```
+
+Once again there is the familiar patter of peaks on the multiples of seven.
+
+### Model Creation 
+
+#### STL Decomposition Models
+
+Again I will try a couple of seasonal decomposition models.  I will set the seasonal window to 7 so it picks up the day of the week variation.  
+
+```{r}
+atm2_ts %>%
+  stl(s.window = 7, robust = TRUE) %>%
+  autoplot()
+```
+
+This seems very similar to ATM #1.
+
+#### STL + ETS
+
+```{r}
+atm4_stl_ets_fit <- atm4_ts %>%
+  stlf(h = h, s.window = 7, robust = TRUE, method = "ets")
+checkresiduals(atm4_stl_ets_fit)
+```
+
+This model did a fair job.  There are a couple of ACF spikes that are outside the bands.  Let's see if the ARIMA model does better:
+
+#### STL + ARIMA
+
+```{r}
+atm4_stl_arima_fit <- atm4_ts %>%
+  stlf(h = h, s.window = 7, robust = TRUE, method = "arima")
+checkresiduals(atm4_stl_arima_fit)
+```
+
+This is an improvement over the STL+ETS model.  There are still a couple of spikes on the ACF that falls outside the threshold.
+
+#### Holt-Winters
+
+```{r}
+atm4_hw_fit <- hw(atm4_ts, h = h)
+checkresiduals(atm4_hw_fit)
+```
+
+This method seems to have preformed better than any of the STL models.
+
+### Holt-Winters with Box Cox Adjustment
+
+```{r}
+atm4_lambda <- BoxCox.lambda(atm4_ts)
+atm4_adj_hw_fit <- hw(atm4_ts, h = h, lambda = atm4_lambda)
+checkresiduals(atm4_adj_hw_fit)
+```
+
+This model preformed very well.  It doesn't look like any of the ACF spikes are outside the bands.  This is a contender for sure.
+
+#### ARIMA
+
+```{r}
+atm4_arima_fit <- auto.arima(atm4_ts)
+checkresiduals(atm4_arima_fit)
+```
+
+This model did fairly well, but it seems like the Holt-Winters with Box-Cox adjustment did better.  It's time to cross-validate and see how all of them preform.
+
+### Cross Validation
+
+Once again, I will use the `tsCV` function and evaluate the models.  My goal to minimize the RMSE remains for this dataset. 
+
+```{r}
+atm4_arima_forecast <- function(x, h) {
+  forecast(Arima(x, order = c(0, 0, 3), seasonal = c(1, 0, 0)), h = h)
+}
+stl_ets_errors <- tsCV(atm4_ts, stlf, h = h, s.window = 7, robust = TRUE, method = "ets")
+stl_arima_errors <- tsCV(atm4_ts, stlf, h = h, s.window = 7, robust = TRUE, method = "arima")
+hw_errors <- tsCV(atm4_ts, hw, h = h)
+adj_hw_errors <- tsCV(atm4_ts, hw, h = h, lambda = atm4_lambda)
+arima_errors <- tsCV(atm4_ts, atm4_arima_forecast, h = h)
+data.frame(Model = c("STL ETS", "STL ARIMA", "ARIMA", "Holt-Winters", "Adjusted Holt-Winters"),
+           RMSE = c(get_rmse(stl_ets_errors[, h]), get_rmse(stl_arima_errors[, h]), get_rmse(arima_errors[, h]), get_rmse(hw_errors[, h]), get_rmse(adj_hw_errors[, h]))) %>%
+  arrange(RMSE) %>%
+  kable() %>%
+  kable_styling()
+```
+
+That's an unexpected result.  The Adjusted Holt-Winters (the one I thought would preform the best), did not preform as well.  The ARIMA model, once again, rose to the top.
+
+### Model Selection
+
+Once again I will use the forecasts produced by the ARIMA model as the projections for ATM #4.
+
+## Summary
+
+I set out to create predictions for 4 different ATMs.  After testing multiple approaches using cross-validation, I selected ARIMA models for ATM #1, #2 and #4, as it was the modeling technique with the lowest RMSE.  For ATM #3 we used the mean of all non-zero data (3 observations).  This model needs to be updated once more data becomes available. I will finish this project by exporting my forcasts in the same file format as the original data.
+
+```{r, echo=FALSE}
+dates <- seq(ymd("2010-05-01"), ymd("2010-05-31"), by = "1 day")
+atm1_forecast <- forecast(atm1_arima_fit, h = h)
+atm2_forecast <- forecast(atm2_arima_fit, h = h)
+atm3_forecast <- rep(atm3_mean, h)
+atm4_forecast <- forecast(atm4_arima_fit, h = h)
+forecasts_df <- data.frame("DATE" = dates, "ATM" = c("ATM1"), "Cash" = c(atm1_forecast$mean))
+forecasts_df <- data.frame("DATE" = dates, "ATM" = c("ATM2"), "Cash" = c(atm2_forecast$mean)) %>%
+  rbind(forecasts_df, .)
+forecasts_df <- data.frame("DATE" = dates, "ATM" = c("ATM3"), "Cash" = atm3_forecast) %>%
+  rbind(forecasts_df, .)
+forecasts_df <- data.frame("DATE" = dates, "ATM" = c("ATM4"), "Cash" = c(atm4_forecast$mean)) %>%
+  rbind(forecasts_df, .)
+write.xlsx(forecasts_df, "ATM_Forecasts.xlsx")
+```
+
+
+-----
 -----
 
 ## Part B – Forecasting Power, ResidentialCustomerForecastLoad-624.xlsx
@@ -262,6 +525,8 @@ The ARIMA model would be selected to produce the forecast for ATM #1.  This beca
 Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file.  The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward.    Add this to your existing files above. 
 
 
+
+-----
 -----
 
 ## Part C – BONUS, optional (part or all), Waterflow_Pipe1.xlsx and Waterflow_Pipe2.xlsx
