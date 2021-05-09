@@ -12,9 +12,9 @@
 
 <meta name="author" content="Salma Elshahawy" />
 
-<meta name="date" content="2021-04-04" />
+<meta name="date" content="2021-04-11" />
 
-<title>project_1 part A ATM Forcast</title>
+<title>project_1</title>
 
 <script>// Hide empty <a> tag within highlighted CodeBlock for screen reader accessibility (see https://github.com/jgm/pandoc/issues/6352#issuecomment-626106786) -->
 // v0.0.1
@@ -501,15 +501,16 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 
 
 
-<h1 class="title toc-ignore">project_1 part A ATM Forcast</h1>
+<h1 class="title toc-ignore">project_1</h1>
 <h4 class="author">Salma Elshahawy</h4>
-<h4 class="date">2021-04-04</h4>
+<h4 class="date">2021-04-11</h4>
 
 
 
 <p><a href="https://github.com/salma71/MSDS_spring2021/tree/master/data_624">Github repo</a> | <a href="https://salma71.github.io/">portfolio</a> | <a href="https://salmaeng71.medium.com/">Blog</a></p>
 <div id="part-a-atm-forecast-atm624data.xlsx" class="section level2">
 <h2>Part A – ATM Forecast, ATM624Data.xlsx</h2>
+<p><a href="https://github.com/salma71/MSDS_spring2021/blob/master/data_624/ATM_Forecasts.xlsx">The generated forcates are on Github</a></p>
 <p>In part A, I want you to forecast how much cash is taken out of 4 different ATM machines for May 2010. The data is given in a single file. The variable ‘Cash’ is provided in hundreds of dollars, other than that it is straight forward. I am being somewhat ambiguous on purpose to make this have a little more business feeling. Explain and demonstrate your process, techniques used and not used, and your actual forecast. I am giving you data via an excel file, please provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual.rmd file Also please submit the forecast which you will put in an Excel readable file.</p>
 </div>
 <div id="introduction" class="section level2">
@@ -943,7 +944,7 @@ Holt-Winters
 </tr>
 </tbody>
 </table>
-<p>Interesting. It looks like the ARIMA model was the top preformer again. I find it interesting that the RMSE is higher and more spread out for ATM #2. ATM #1’s RMSEs ranged from roughyl 30 to 39. The RMSEs for ATM #2 ranged from 34 to 55. There is more variability in this data that isn’t captured by the model.</p>
+<p>Interesting. It looks like the ARIMA model was the top preformer again. I find it interesting that the RMSE is higher and more spread out for ATM #2. ATM #1’s RMSEs ranged from roughly ~ 30 to 39. The RMSEs for ATM #2 ranged from ~ 33 to 55. There is more variability in this data that isn’t captured by the model.</p>
 </div>
 <div id="model-selection-1" class="section level3">
 <h3>Model Selection</h3>
@@ -1112,6 +1113,7 @@ Holt-Winters
 </div>
 <div id="part-b-forecasting-power-residentialcustomerforecastload-624.xlsx" class="section level2">
 <h2>Part B – Forecasting Power, ResidentialCustomerForecastLoad-624.xlsx</h2>
+<p><a href="https://github.com/salma71/MSDS_spring2021/blob/master/data_624/Residential_Customer_Load_Forecast.xlsx">The generated forcates are on Github</a></p>
 <p>Part B consists of a simple dataset of residential power usage for January 1998 until December 2013. Your assignment is to model these data and a monthly forecast for 2014. The data is given in a single file. The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward. Add this to your existing files above.</p>
 </div>
 <div id="introduction-1" class="section level2">
@@ -1718,7 +1720,7 @@ WaterFlow
 </tr>
 </tbody>
 </table>
-<p>Hmmm. Some of the timestamps are just a bit off from the hour mark. I will need to clean that up.</p>
+<p>Some of the timestamps are just a bit off from the hour mark. I will need to clean that up.</p>
 </div>
 </div>
 <div id="data-cleanup-3" class="section level2">

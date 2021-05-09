@@ -1,0 +1,11 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/767356/8667a5b3cbed4601b995542a8ed43790
+bundleId: https://api.rpubs.com/api/v1/document/767356/8667a5b3cbed4601b995542a8ed43790
+url: http://rpubs.com/salmaeng/767356
+when: 1620599936.19479
+lastSyncTime: 1620599936.19481

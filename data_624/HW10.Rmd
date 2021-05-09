@@ -1,0 +1,106 @@
+---
+title: "Homework 10 Predictive analytics"
+author: "Salma Elshahawy"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Homework 9 Predictive analytics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+[Github repo](https://github.com/salma71/MSDS_spring2021/tree/master/data_624) | [portfolio](https://salma71.github.io/) | [Blog](https://salmaeng71.medium.com/)
+
+Imagine 10000 receipts sitting on your table. Each receipt represents a transaction with items that were purchased. The receipt is a representation of stuff that went into a customer’s basket - and therefore ‘Market Basket Analysis’.
+
+That is exactly what the Groceries Data Set contains: a collection of receipts with each line representing 1 receipt and the items purchased. Each line is called a transaction and each column in a row represents an item.  The data set is attached.
+
+Your assignment is to use R to mine the data for association rules. You should report support, confidence and lift and your top 10 rules by lift. 
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# Load the libraries
+library(arules)
+library(arulesViz)
+library(datasets)
+library(tidyverse)
+library(reshape2)
+library(RColorBrewer)
+options(digits=2)
+set.seed(424242)
+```
+
+## Load Data
+
+
+```{r fig.height=5, fig.width=8}
+# Load Groceries Dataset
+groceries_df <- read.csv("GroceryDataSet.csv", header = FALSE,
+                         na.strings="", 
+                         stringsAsFactors=FALSE )
+# Add an id column
+groceries_df$id <- seq(nrow(groceries_df))
+groceries_df <- groceries_df %>%
+  mutate(across(where(is.character), str_trim))
+
+print(paste(nrow(groceries_df), ncol(groceries_df)))
+groceries_long <- melt(groceries_df, id.vars="id")
+groceries_trans <- as(lapply(split(groceries_long$value, groceries_long$id), unique), "transactions")
+inspect(groceries_trans[1:5])
+itemFrequencyPlot(groceries_trans, 
+                  topN=30, 
+                  type="absolute",
+                  main='Absolute Item Frequency Plot',
+                  ylab="Item Frequency (Absolute)")
+```
+
+### Create Basket Rules
+
+I am filtering to only include rules with 1~4 items on the RHS.  Rules with 5+ items are probably less useful and would increase noise.  Given the large number of receipts, I'm using a lower `support` threshold and I experimented with different `confidence` values to get what look like reasonable rules.
+
+Note: I tried to remove redundant rules using examples from documentation, but for some reason (I don't know why), the filtering treated ALL rules as redundant.  After a fair bit of troubleshooting, I just removed that step for now.  This would certainly be something I would circle back to if I were using this analysis for real.
+
+
+```{r}
+rules <- apriori(groceries_trans, 
+                 parameter = list(supp = 0.001, 
+                                  conf = 0.15,
+                                  minlen = 2,
+                                  maxlen = 5))
+# find redundant rules
+# subset.matrix <- is.subset(rules, rules)
+# subset.matrix[lower.tri(subset.matrix, diag=T)] <- NA
+# redundant <- colSums(subset.matrix, na.rm=T) >= 1
+# remove redundant rules
+# rules.pruned <- rules[!redundant]
+# rules <- rules.pruned
+rules <- sort(rules, by="lift", decreasing=TRUE)
+inspect(rules[1:10])
+```
+
+Stepping back, if this were being used in a real setting, I would explore generating a `score` using a geometric mean of `support`, `confidence` and `lift` ... then sorting my rules based on this new metric, `score`.  Ideally we want rules that are both prevalent and meaningful.  A large `lift` with low `support` not be actionable. Alternatively, a high `confidence` with low `support` or low `lift` would also not be as actionable.  Ideally, we want rules that identify both high `lift` and high `support`.  
+
+Per instructions, I've just sorted based on `lift` for now; however, `lift` alone probably isn't the best approach.
+
+
+### Cluster Analysis
+
+```{r fig.height=8, fig.width=8}
+s <- groceries_trans[,itemFrequency(groceries_trans) > 0.02]
+d_jaccard <- dissimilarity(s, which = "items", method="affinity")
+plot(hclust(d_jaccard, method = "ward.D2"), main = "Dendrogram for Items")
+```
+
+```{r fig.height=8, fig.width=8}
+d_affinity <- dissimilarity(rules[1:20], 
+                            method = "affinity", 
+                            args = list(transactions = groceries_trans))
+hc <- hclust(d_affinity, method = "ward.D2")
+plot(hc, main = "Dendrogram for Rules (Affinity)") 
+## create 4 groups and inspect the rules in the first group.
+assign <- cutree(hc, k = 3)
+rules
+```
+
+```{r}
+inspect(rules[assign == 2][1:10])
+```
+

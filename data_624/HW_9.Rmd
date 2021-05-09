@@ -102,6 +102,9 @@ rf_imp_3 %>%
   kable_styling()
 ```
 
+
+**We can see that in this model the order of the variables from the importance perspective slightly changed. We can see that model gave both V8 and V10 a higher  relationship coefficient. However it decreased the ralationship coefficients for V1 and V2 from 6 to below 5.** 
+
 ### Part D
 
 Repeat this process with different tree models, such as boosted trees and Cubist.  Does the same pattern occur?
@@ -407,7 +410,7 @@ varImp(pls_model)
 
 Plot the optimal single tree with the distribution of yield in the terminal nodes.  Does this view of the data provide additional knowledge about the biological or process predictors and their relationship with yield?
 
-```{r 8_7_C}
+```{r 8_7_C, fig.height=15, fig.width=15}
 set.seed(1)
 cart_model <- train(Yield ~ ., data = train_df, method = "rpart",
                     trControl = trainControl("cv", number = 10),
@@ -415,4 +418,4 @@ cart_model <- train(Yield ~ ., data = train_df, method = "rpart",
 fancyRpartPlot(cart_model$finalModel, sub="")
 ```
 
-**This indicates that if you want to maximize yield, then the manufacturing process 32 must be greater than or equal to 0.19, process 13 < -0.85 and the Biological material 3 >= 0.49.  This recipe will produce the greatest yield.  Caution should be used however as this model is likely overfitting the training data.**
+**This indicates that if we want to maximize yield, then the manufacturing process 32 must be greater than or equal to 0.19, process 13 < -0.85 and the Biological material 3 >= 0.49.  This recipe will produce the greatest yield.  Caution should be used however as this model is likely overfitting the training data.**
